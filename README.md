@@ -6,6 +6,10 @@ This program determines sample pressure using the **equation-of-state (EOS) meth
 
 This is an **open-source software written in Python**. It can be executed directly from the command line on any operating system with Python installed, or by downloading a precompiled **Windows `.exe` executable** for immediate use.
 
+## Software Interface
+
+![Software Interface](./docs/interface.png)
+
 ---
 
 ### Features
@@ -63,9 +67,3 @@ The software has been tested during on-site experiments at the **4th-generation 
 ### Try It Now
 
 Start using the tool immediately to streamline pressure calibration in high-pressure XRD experiments.
-
----
-
-## Software Interface
-
-![Software Interface](./docs/interface.png)
