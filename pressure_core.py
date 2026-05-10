@@ -81,9 +81,13 @@ CALIBRANT_DEFAULTS: Dict[str, Dict[str, Any]] = {
 # IO
 # =========================
 def load_image(path: str, h5_dset: Optional[str] = None) -> np.ndarray:
-    if path.lower().endswith((".edf", ".tif", ".tiff", ".cbf", ".img", ".mar3450", ".mccd", ".pnm")):
+    if path.lower().endswith((".tif", ".tiff", ".cbf", ".img", ".mar3450", ".mccd", ".pnm")):
         data = fabio.open(path).data
         data = np.flipud(data)
+        return data.astype(np.float32)
+        
+    if path.lower().endswith((".edf")):
+        data = fabio.open(path).data
         return data.astype(np.float32)
 
     if path.lower().endswith((".h5", ".hdf5", ".nxs")):
