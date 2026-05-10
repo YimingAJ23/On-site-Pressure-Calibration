@@ -1,5 +1,7 @@
 # pressure_gui.py
 
+import re
+from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 from PIL import Image, ImageTk
@@ -65,11 +67,39 @@ class PressureGUI(tk.Tk):
         self._grid_file_row(files, 1, "Mask (.tif/.mask)", self.mask_var, browse=True)
 
         mask_opt = tk.Frame(files)
-        mask_opt.grid(row=2, column=1, sticky="w", pady=(2, 0))
-        tk.Checkbutton(mask_opt, text="No mask", variable=self.mask_none_var).pack(side=tk.LEFT)
+        mask_opt.grid(row=2, column=1, sticky="ew", pady=(2, 0))
+
+        # left side
+        left_opt = tk.Frame(mask_opt)
+        left_opt.pack(side=tk.LEFT)
+
+        tk.Checkbutton(
+            left_opt,
+            text="No mask",
+            variable=self.mask_none_var
+        ).pack(side=tk.LEFT)
+
+        # right side
+        nav_opt = tk.Frame(mask_opt)
+        nav_opt.pack(side=tk.RIGHT)
+
+        ttk.Button(
+            nav_opt,
+            text="◁ Prev",
+            width=8,
+            command=lambda: self._step_data_file(-1)
+        ).pack(side=tk.LEFT, padx=(0, 4))
+
+        ttk.Button(
+            nav_opt,
+            text="Next ▷",
+            width=8,
+            command=lambda: self._step_data_file(+1)
+        ).pack(side=tk.LEFT)
+
+        tk.Label(files, text="Data (.edf/.tif/.h5)").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
 
         self._grid_file_row(files, 3, "Data (.edf/.tif/.h5)", self.data_var, browse=True)
-        self._grid_file_row(files, 4, "H5 dataset (optional)", self.h5_var, browse=False)
 
         # ----------------------------
         # Section: Sample / Peak
@@ -226,9 +256,48 @@ class PressureGUI(tk.Tk):
     # Helpers
     # ----------------------------
     def _browse_file(self, var):
-        path = filedialog.askopenfilename()
+        cur = var.get().strip()
+        initialdir = None
+        if cur:
+            try:
+                initialdir = str(Path(cur).expanduser().resolve().parent)
+            except Exception:
+                initialdir = None
+
+        path = filedialog.askopenfilename(initialdir=initialdir)
         if path:
             var.set(path)
+
+    def _step_data_file(self, step: int):
+        current = self.data_var.get().strip()
+        if not current:
+            messagebox.showinfo("Info", "Please select a data file first.")
+            return
+
+        new_path = self._shift_filename_number(current, step)
+        if not new_path:
+            messagebox.showwarning("Warning", "No numeric part found in the file name.")
+            return
+
+        self.data_var.set(new_path)
+
+    def _shift_filename_number(self, path: str, step: int):
+        p = Path(path)
+        name = p.name
+
+        matches = list(re.finditer(r"\d+", name))
+        if not matches:
+            return None
+
+        m = matches[-1]
+        num_str = m.group()
+        new_num = int(num_str) + step
+        if new_num < 0:
+            return None
+
+        new_num_str = str(new_num).zfill(len(num_str))
+        new_name = name[:m.start()] + new_num_str + name[m.end():]
+        return str(p.with_name(new_name))
 
     @staticmethod
     def _to_float_or_none(s: str):
