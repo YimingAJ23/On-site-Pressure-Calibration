@@ -61,45 +61,42 @@ class PressureGUI(tk.Tk):
         self.mask_var = tk.StringVar()
         self.data_var = tk.StringVar()
         self.h5_var = tk.StringVar()
+        self.data_flip_var = tk.BooleanVar(value=False)
         self.mask_none_var = tk.BooleanVar(value=False)
 
         self._grid_file_row(files, 0, "PONI (.poni)", self.poni_var, browse=True)
         self._grid_file_row(files, 1, "Mask (.tif/.mask)", self.mask_var, browse=True)
+        self._grid_file_row(files, 2, "Data (.edf/.tif/.h5)", self.data_var, browse=True)
 
-        mask_opt = tk.Frame(files)
-        mask_opt.grid(row=2, column=1, sticky="ew", pady=(2, 0))
+        data_opt = tk.Frame(files)
+        data_opt.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(2, 0))
 
-        # left side
-        left_opt = tk.Frame(mask_opt)
-        left_opt.pack(side=tk.LEFT)
+        # Data-related options are kept directly below the Data row and left-aligned.
+        tk.Checkbutton(
+            data_opt,
+            text="Data Flip",
+            variable=self.data_flip_var
+        ).pack(side=tk.LEFT, padx=(0, 16))
 
         tk.Checkbutton(
-            left_opt,
+            data_opt,
             text="No mask",
             variable=self.mask_none_var
-        ).pack(side=tk.LEFT)
-
-        # right side
-        nav_opt = tk.Frame(mask_opt)
-        nav_opt.pack(side=tk.RIGHT)
+        ).pack(side=tk.LEFT, padx=(0, 16))
 
         ttk.Button(
-            nav_opt,
+            data_opt,
             text="◁ Prev",
             width=8,
             command=lambda: self._step_data_file(-1)
         ).pack(side=tk.LEFT, padx=(0, 4))
 
         ttk.Button(
-            nav_opt,
+            data_opt,
             text="Next ▷",
             width=8,
             command=lambda: self._step_data_file(+1)
         ).pack(side=tk.LEFT)
-
-        tk.Label(files, text="Data (.edf/.tif/.h5)").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
-
-        self._grid_file_row(files, 3, "Data (.edf/.tif/.h5)", self.data_var, browse=True)
 
         # ----------------------------
         # Section: Sample / Peak
@@ -397,6 +394,7 @@ class PressureGUI(tk.Tk):
                 data_path=data_path,
                 mask_path=mask_path,
                 h5_dset=self.h5_var.get().strip() or None,
+                data_flip=bool(self.data_flip_var.get()),
                 material=material,
                 hkl_str=hkl_str,
                 crystal=crystal,
