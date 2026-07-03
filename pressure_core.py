@@ -80,17 +80,97 @@ CALIBRANT_DEFAULTS: Dict[str, Dict[str, Any]] = {
 # =========================
 # IO
 # =========================
-def load_image(path: str, h5_dset: Optional[str] = None) -> np.ndarray:
-    if path.lower().endswith((".tif", ".tiff", ".cbf", ".img", ".mar3450", ".mccd", ".pnm")):
-        data = fabio.open(path).data
-        data = np.flipud(data)
-        return data.astype(np.float32)
-        
-    if path.lower().endswith((".edf")):
-        data = fabio.open(path).data
+def _should_flip_data(data_flip: bool = False) -> bool:
+    """Resolve whether image data should be vertically flipped.
+
+    Default is False for every supported data format. If the GUI checkbox
+    is enabled, the loaded 2D data array is flipped vertically with np.flipud.
+    The mask-reading logic is intentionally separate and unchanged.
+    """
+    if isinstance(data_flip, str):
+        mode = data_flip.strip().lower()
+        return mode in ("yes", "true", "1", "flip", "flipud", "updown", "up-down")
+    return bool(data_flip)
+
+
+def _normalize_2d_array(data: np.ndarray, source: str = "image") -> np.ndarray:
+    """Return a 2D detector image array.
+
+    Some beamline formats store one frame as a 3D array with the frame index
+    first.  This helper keeps the first frame, matching the original program
+    behavior for H5 datasets.
+    """
+    data = np.asarray(data)
+    if data.ndim == 3:
+        data = data[0]
+    if data.ndim != 2:
+        raise ValueError(f"Unsupported {source} shape: {data.shape}")
+    return data
+
+
+def _fix_uint32_signed_wrap(data: np.ndarray) -> np.ndarray:
+    """Fix 32-bit TIFF images whose signed negative values were read as uint32.
+
+    Several detector TIFF writers omit the TIFF SampleFormat tag.  Then pixels
+    that are physically negative after dark/background correction can be read
+    as large unsigned values close to 2**32.  These wrapped values dominate
+    azimuthal integration.  If such values are detected, reinterpret the array
+    as int32 without changing the underlying bits.
+    """
+    data = np.asarray(data)
+    if data.dtype == np.uint32 and data.size > 0:
+        # Values above 2**31 are not realistic positive photon counts for these
+        # detector images and normally indicate signed-int wraparound.
+        if np.nanmax(data) > np.uint32(2**31 - 1):
+            return data.view(np.int32)
+    return data
+
+
+def _read_tiff_robust(path: str) -> np.ndarray:
+    """Read TIFF data in a way that is stable for DESY/ngMultiXRD 32-bit TIFFs.
+
+    Prefer tifffile for scientific TIFF metadata.  Fall back to PIL/fabio if
+    tifffile is unavailable.  The uint32 signed-wrap correction is applied to
+    all TIFF read paths.
+    """
+    data = None
+
+    try:
+        import tifffile
+        data = tifffile.imread(path)
+    except Exception:
+        data = None
+
+    if data is None:
+        try:
+            from PIL import Image
+            data = np.array(Image.open(path))
+        except Exception:
+            data = fabio.open(path).data
+
+    data = _normalize_2d_array(data, source="TIFF image")
+    data = _fix_uint32_signed_wrap(data)
+    return data
+
+
+def load_image(path: str, h5_dset: Optional[str] = None, data_flip: bool = False) -> np.ndarray:
+    do_flip = _should_flip_data(data_flip)
+    path_lower = path.lower()
+
+    if path_lower.endswith((".tif", ".tiff")):
+        data = _read_tiff_robust(path)
+        if do_flip:
+            data = np.flipud(data)
         return data.astype(np.float32)
 
-    if path.lower().endswith((".h5", ".hdf5", ".nxs")):
+    if path_lower.endswith((".edf", ".cbf", ".img", ".mar3450", ".mccd", ".pnm")):
+        data = fabio.open(path).data
+        data = _normalize_2d_array(data, source="image")
+        if do_flip:
+            data = np.flipud(data)
+        return data.astype(np.float32)
+
+    if path_lower.endswith((".h5", ".hdf5", ".nxs")):
         with h5py.File(path, "r") as f:
             if h5_dset:
                 data = f[h5_dset][()]
@@ -110,12 +190,10 @@ def load_image(path: str, h5_dset: Optional[str] = None) -> np.ndarray:
                 if candidate is None:
                     raise ValueError("No suitable 2D/3D dataset found in H5. Please specify H5 dataset path.")
                 data = f[candidate][()]
-            
-            data = np.asarray(data)
-            if data.ndim == 3:
-                data = data[0]
-            if data.ndim != 2:
-                raise ValueError(f"Unsupported H5 dataset shape: {data.shape}")
+
+            data = _normalize_2d_array(data, source="H5 dataset")
+            if do_flip:
+                data = np.flipud(data)
             return data.astype(np.float32)
 
     raise ValueError(f"Unsupported data file type: {path}")
@@ -464,7 +542,8 @@ def run_pressure_calibration(
     b0: Optional[float],         
     b0p: Optional[float],        
     v0: Optional[float],
-    npt: int = 2000,    
+    npt: int = 2000,
+    data_flip: bool = False,
 ) -> dict:
 
     if material not in CALIBRANT_DEFAULTS:
@@ -480,7 +559,8 @@ def run_pressure_calibration(
     wl_ang = wl * 1e10  # m -> Å
 
     # load image
-    img = load_image(data_path, h5_dset)
+    img = load_image(data_path, h5_dset, data_flip=data_flip)
+
 
     # load mask
     mask = None
